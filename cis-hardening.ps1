@@ -45,17 +45,17 @@ param (
     [ValidateSet( 1, 2)]
     [string] $level = 1,
 
+    [Parameter(Mandatory = $false, ParameterSetName = 'Default')]
+    [Parameter(Mandatory = $false, ParameterSetName = 'RollBack')]
+    [switch] $output,
+
     [Parameter(Mandatory = $true, ParameterSetName = 'RollBack')]
     [switch] $rollBack,
 
     [Parameter(Mandatory = $true, ParameterSetName = 'RollBack')]
     [ValidateNotNullOrEmpty()]
     [ValidateScript( { If (Test-Path $_ -PathType 'Leaf') { $True } Else { Throw "Cannot find file $_" } })]
-    [string] $rollBackCSV,
-
-    [Parameter(Mandatory = $false, ParameterSetName = 'Default')]
-    [Parameter(Mandatory = $false, ParameterSetName = 'RollBack')]
-    [switch] $output
+    [string] $rollBackCSV
 )
 
 begin {
@@ -548,8 +548,6 @@ begin {
 
     Write-Log -Object "Hardening" -Message "Environment: $environment" -Severity Information -logType Host
 
-    # import controls based on environment
-    $controls = Import-Csv -Path $controlsCSV | Where-Object { ($_.ENABLED -eq $true) -and ($_.$($environment) -eq $true) }
 }
 
 process {
@@ -584,6 +582,9 @@ process {
     }
     # deploy settings
     else {
+        # import controls based on environment
+        $controls = Import-Csv -Path $controlsCSV | Where-Object { ($_.ENABLED -eq $true) -and ($_.$($environment) -eq $true) }
+
         # Registry section
         foreach ($control in ($controls | Where-Object { ($_.Type -eq "Registry") -and ([int]$_.Level -le $level) })) {
             if ($control.RegistryPath -like "HKEY_USERS*") {
@@ -641,8 +642,11 @@ process {
         }
         # Add Firewall Rules to support Veeam Backup Tooling
         if ($environment -eq 'VMWare') {
-            New-NetFirewallRule -Name "Veeam Enfield In" -Direction Inbound -Action Allow -Enabled True -Profile Any -RemoteAddress 10.221.196.180-10.221.196.181 -DisplayName "Veeam Enfield In"
-            New-NetFirewallRule -Name "Veeam Reading In" -Direction Inbound -Action Allow -Enabled True -Profile Any -RemoteAddress 10.251.196.180-10.251.196.181 -DisplayName "Veeam Reading In"
+            $nics = Get-NetAdapter
+            if ($nics.Name -eq "BUA") {
+                New-NetFirewallRule -Name "Veeam Enfield In" -Direction Inbound -Action Allow -Enabled True -Profile Any -RemoteAddress 10.221.196.180-10.221.196.181 -DisplayName "Veeam Enfield In"
+                New-NetFirewallRule -Name "Veeam Reading In" -Direction Inbound -Action Allow -Enabled True -Profile Any -RemoteAddress 10.251.196.180-10.251.196.181 -DisplayName "Veeam Reading In"
+            }
         }
     }
 }
