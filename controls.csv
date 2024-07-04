@@ -1,7 +1,7 @@
 ControlID,Description,Level,ENABLED,Azure,VMware,Hyper-V,Type,RegistryPath,RegistryProperty,RegistryType,NetAccountsType,CPrivilegeIdentity,CPrivilegePrivilege,AuditPolCategory,Value,Notes
 1052,Status of the 'Devices: Allowed to format and eject removable media' setting (NTFS formatted devices),1,TRUE,TRUE,TRUE,TRUE,Registry,HKEY_LOCAL_MACHINE\Software\Microsoft\Windows NT\CurrentVersion\Winlogon,AllocateDASD,Dword,,,,,0,
 1071,Status of the 'Minimum Password Length' setting,1,TRUE,TRUE,TRUE,TRUE,NetAccounts,,,,MINPWLEN,,,,14,
-1072,Status of the 'Minimum Password Age' setting  ,1,TRUE,TRUE,TRUE,TRUE,NetAccounts,,,,MINPWAGE,,,,1,
+1072,Status of the 'Minimum Password Age' setting,1,TRUE,TRUE,TRUE,TRUE,NetAccounts,,,,MINPWAGE,,,,1,
 1134,Status of 'logon banner title' setting (Legal Notice),1,TRUE,TRUE,TRUE,TRUE,Registry,HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Policies\System,LegalNoticeCaption,String,,,,,Daisy Group Acceptable Usage Policy,
 1149,Status of the 'Microsoft network client: Digitally sign communications (always)' setting,1,TRUE,TRUE,TRUE,TRUE,Registry,HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters,RequireSecuritySignature,DWord,,,,,1,
 1153,Status of the 'Network Access: Do not allow Anonymous Enumeration of SAM Accounts and Shares' setting,1,TRUE,TRUE,TRUE,TRUE,Registry,HKEY_LOCAL_MACHINE\SYSTEM\Currentcontrolset\control\lsa,RestrictAnonymous,DWord,,,,,1,
