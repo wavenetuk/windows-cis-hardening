@@ -1,15 +1,15 @@
 <#
     .DESCRIPTION
-    Windows Server 2019 and Windows Server 2022 CIS benchmark level 1 hardening script
+    Windows Server 2019 and Windows Server 2022 CIS hardening script
 
     .NOTES
-        Updated: 10/05/2024
+        Updated: 04/07/2024
         Author: Paul Martin & Dean Reynolds
 
     .EXAMPLE
-    .\CIS_L1-Hardening.ps1 -output
+    .\CIS_L1-Hardening.ps1 -level 1 -output
 
-    .\CIS_L1-Hardening.ps1 -rollBack -rollBackCSV "$env:SYSTEMROOT\temp\CIS_L1-Hardening.csv"
+    .\CIS_L1-Hardening.ps1 -rollBack -rollBackCSV ".\cis-hardening-level-1-output.csv"
 #>
 
 [CmdletBinding(DefaultParameterSetName = 'Default', SupportsShouldProcess = $true)]
@@ -42,7 +42,7 @@ param (
 
     [Parameter(Mandatory = $false, ParameterSetName = 'Default')]
     [ValidateNotNullOrEmpty()]
-    [ValidateSet( 1, 2)]
+    [ValidateSet( 1, 2, 3)]
     [string] $level = 1,
 
     [Parameter(Mandatory = $false, ParameterSetName = 'Default')]
