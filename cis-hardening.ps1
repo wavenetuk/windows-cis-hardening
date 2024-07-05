@@ -584,7 +584,7 @@ process {
                 Rename-Account -controlID $item.controlID -account $item.NewValue -newName $item.OldValue
             }
         }
-        $global:results | Export-Csv -Path (Join-Path (split-path -parent $MyInvocation.MyCommand.Definition) "CIS_L1-Hardening-rollback-output.csv") -Force -NoTypeInformation
+        $global:results | Export-Csv -Path (Join-Path (split-path -parent $MyInvocation.MyCommand.Definition) "cis-hardening-rollback-output.csv") -Force -NoTypeInformation
     }
     # deploy settings
     else {
