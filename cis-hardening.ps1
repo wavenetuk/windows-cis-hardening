@@ -68,8 +68,8 @@ begin {
     Install-Module -Name 'AuditPolicy' -Scope CurrentUser -Confirm:$False -Force | Out-Null
 
     # Convert string to booleon. This method is required due to not being able to pass switch parameters via Azure Run Command extensions.
-    $output = [System.Convert]::ToBoolean($output)
-    $rollBack = [System.Convert]::ToBoolean($rollBack)
+    $outputBool = [System.Convert]::ToBoolean($output)
+    $rollBackBool = [System.Convert]::ToBoolean($rollBack)
 
     function Write-Log {
         [CmdletBinding()]
@@ -558,7 +558,7 @@ begin {
 
 process {
     # roll back settings
-    if ($rollBack) {
+    if ($rollBackBool) {
         $contents = Import-Csv -Path $rollBackCSV
         foreach ($item in $contents) {
             if ($item.type -eq 'Registry') {
@@ -660,7 +660,7 @@ process {
 end {
     # Output file
     Write-Host "Please reboot the server to ensure that all settings are correctly applied following completion of this script" -ForegroundColor Green
-    if ($output) {
+    if ($outputBool) {
         $WhatIfPreference = $false
         $global:results | Export-Csv -Path (Join-Path (split-path -parent $MyInvocation.MyCommand.Definition) "cis-hardening-level-$level-output.csv") -Force -NoTypeInformation
     }
