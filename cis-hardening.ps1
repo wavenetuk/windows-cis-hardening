@@ -47,10 +47,12 @@ param (
 
     [Parameter(Mandatory = $false, ParameterSetName = 'Default')]
     [Parameter(Mandatory = $false, ParameterSetName = 'RollBack')]
-    [switch] $output,
+    [ValidateSet('true', 'false')]
+    [string] $output = 'true',
 
     [Parameter(Mandatory = $true, ParameterSetName = 'RollBack')]
-    [switch] $rollBack,
+    [ValidateSet('true', 'false')]
+    [string] $rollBack = 'false',
 
     [Parameter(Mandatory = $true, ParameterSetName = 'RollBack')]
     [ValidateNotNullOrEmpty()]
@@ -64,6 +66,10 @@ begin {
     Install-PackageProvider -Name 'NuGet' -Scope CurrentUser -Confirm:$False -Force | Out-Null
     Install-Module -Name 'Carbon' -Scope CurrentUser -Confirm:$False -Force | Out-Null
     Install-Module -Name 'AuditPolicy' -Scope CurrentUser -Confirm:$False -Force | Out-Null
+
+    # Convert string to booleon. This method is required due to not being able to pass switch parameters via Azure Run Command extensions.
+    $output = [System.Convert]::ToBoolean($output)
+    $rollBack = [System.Convert]::ToBoolean($rollBack)
 
     function Write-Log {
         [CmdletBinding()]
