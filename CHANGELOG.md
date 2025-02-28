@@ -1,3 +1,9 @@
+## v0.2.2 (2025-02-28)
+
+### Fix
+
+- update condition syntax in bumpversion workflow (#2)
+
 ## v0.2.1 (2025-02-28)
 
 ### Fix
