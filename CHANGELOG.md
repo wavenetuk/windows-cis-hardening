@@ -1,3 +1,9 @@
+## v0.2.1 (2025-02-28)
+
+### Fix
+
+- update tag format in bumpversion workflow and upgrade commitizen version (#1)
+
 ## v0.2.0 (2025-02-27)
 
 ### Feat
