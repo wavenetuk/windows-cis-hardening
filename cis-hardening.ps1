@@ -57,7 +57,11 @@ param (
     [Parameter(Mandatory = $true, ParameterSetName = 'RollBack')]
     [ValidateNotNullOrEmpty()]
     [ValidateScript( { If (Test-Path $_ -PathType 'Leaf') { $True } Else { Throw "Cannot find file $_" } })]
-    [string] $rollBackCSV
+    [string] $rollBackCSV,
+
+    [Parameter(Mandatory = $false, HelpMessage = 'Restart the virtual machine')]
+    [ValidateSet('true', 'false')]
+    [string] $restart = 'true'
 )
 
 begin {
@@ -70,6 +74,7 @@ begin {
     # Convert string to booleon. This method is required due to not being able to pass switch parameters via Azure Run Command extensions.
     $outputBool = [System.Convert]::ToBoolean($output)
     $rollBackBool = [System.Convert]::ToBoolean($rollBack)
+    $restartParam = [System.Convert]::ToBoolean($restart)
 
     function Write-Log {
         [CmdletBinding()]
@@ -688,4 +693,9 @@ end {
         $global:results | Export-Csv -Path (Join-Path (split-path -parent $MyInvocation.MyCommand.Definition) "cis-hardening-level-$level-output.csv") -Force -NoTypeInformation
     }
     $VerbosePreference = $saveVerbosePreference
+
+    # Restart Computer
+    if ($restartParam) {
+        Restart-Computer -Force
+    }
 }
