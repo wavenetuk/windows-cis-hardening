@@ -14,7 +14,7 @@
 
 [CmdletBinding(DefaultParameterSetName = 'Default', SupportsShouldProcess = $true)]
 param (
-    [Parameter(Mandatory = $true, ParameterSetName = 'Default')]
+    [Parameter(Mandatory = $false, ParameterSetName = 'Default')]
     [ValidateNotNullOrEmpty()]
     [ValidateScript({
             if ($_ -match '^(http|https)://') {
@@ -38,7 +38,7 @@ param (
                 throw "The path provided is neither a valid URL nor a valid file path: $_"
             }
         })]
-    [string] $controlsCSV,
+    [string] $controlsCSV = "https://raw.githubusercontent.com/paul-e-martin/nerdio/refs/heads/main/windows-script/windows-cis-hardening/controls.csv",
 
     [Parameter(Mandatory = $false, ParameterSetName = 'Default')]
     [ValidateNotNullOrEmpty()]
@@ -554,6 +554,20 @@ begin {
 
     Write-Log -Object "Hardening" -Message "Environment: $environment" -Severity Information -logType Host
 
+    # Get OS Name
+    $osName = (Get-ComputerInfo).OsName
+    $os = if ($osName -match "Server \d+") {
+        $matches[0].Replace(" ", "_").toupper()
+    }
+    elseif ($osName -match "Windows \d+") {
+        $matches[0].Replace(" ", "_").toupper()
+    }
+    else {
+        $osName
+    }
+
+    Write-Log -Object "Hardening" -Message "Operating System: $os" -Severity Information -logType Host
+
 }
 
 process {
@@ -589,7 +603,7 @@ process {
     # deploy settings
     else {
         # import controls based on environment
-        $controls = Import-Csv -Path $controlsCSV | Where-Object { ($_.ENABLED -eq $true) -and ($_.$($environment) -eq $true) }
+        $controls = Import-Csv -Path $controlsCSV | Where-Object { ($_.ENABLED -eq $true) -and ($_.$($environment) -eq $true)  -and ($_.$($os) -eq $true)}
 
         # Registry section
         foreach ($control in ($controls | Where-Object { ($_.Type -eq "Registry") -and ([int]$_.Level -le $level) })) {
@@ -632,26 +646,6 @@ process {
                 if (($user = Get-LocalUser | Where-Object { $_.SID -like 'S-1-5-*-500' }).Name -eq "Administrator") {
                     Rename-Account -controlID $control.ControlID -account $user.Name -newName $control.Value
                 }
-            }
-        }
-        # Enable Ping rules for Flex/Azure Environments - Monitoring Tooling - PING (LogicMonitor)
-        if ($environment -in 'VMWare', 'Azure') {
-            Enable-NetFirewallRule -Name "FPS-ICMP4-ERQ-In"
-            Enable-NetFirewallRule -Name "FPS-ICMP6-ERQ-In"
-            Enable-NetFirewallRule -Name "FPS-ICMP4-ERQ-Out"
-            Enable-NetFirewallRule -Name "FPS-ICMP6-ERQ-Out"
-        }
-        # Enable WMI rules for Flex/Azure Environments - Monitoring Tooling - WMI Parsing (LogicMonitor)
-        if ($environment -in 'VMWare', 'Azure') {
-            Enable-NetFirewallRule -Name "WMI-RPCSS-In-TCP"
-            Enable-NetFirewallRule -Name "WMI-WINMGMT-In-TCP"
-        }
-        # Add Firewall Rules to support Veeam Backup Tooling
-        if ($environment -eq 'VMWare') {
-            $nics = Get-NetAdapter
-            if ($nics.Name -eq "BUA") {
-                New-NetFirewallRule -Name "Veeam Enfield In" -Direction Inbound -Action Allow -Enabled True -Profile Any -RemoteAddress 10.221.196.180-10.221.196.181 -DisplayName "Veeam Enfield In"
-                New-NetFirewallRule -Name "Veeam Reading In" -Direction Inbound -Action Allow -Enabled True -Profile Any -RemoteAddress 10.251.196.180-10.251.196.181 -DisplayName "Veeam Reading In"
             }
         }
     }
