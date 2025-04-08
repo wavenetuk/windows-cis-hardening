@@ -14,7 +14,7 @@
 
 [CmdletBinding(DefaultParameterSetName = 'Default', SupportsShouldProcess = $true)]
 param (
-    [Parameter(Mandatory = $true, ParameterSetName = 'Default')]
+    [Parameter(Mandatory = $false, ParameterSetName = 'Default')]
     [ValidateNotNullOrEmpty()]
     [ValidateScript({
             if ($_ -match '^(http|https)://') {
@@ -38,7 +38,7 @@ param (
                 throw "The path provided is neither a valid URL nor a valid file path: $_"
             }
         })]
-    [string] $controlsCSV,
+    [string] $controlsCSV = "https://raw.githubusercontent.com/paul-e-martin/nerdio/refs/heads/main/windows-script/windows-cis-hardening/controls.csv",
 
     [Parameter(Mandatory = $false, ParameterSetName = 'Default')]
     [ValidateNotNullOrEmpty()]
@@ -566,6 +566,7 @@ begin {
     else {
         $osName
     }
+
     Write-Log -Object "Hardening" -Message "Operating System: $os" -Severity Information -logType Host
 }
 
