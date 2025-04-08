@@ -227,7 +227,12 @@ begin {
                 }
                 elseif ($registryValue -eq 'ValueNeedsToBeCleared') {
                     if ($PSCmdlet.ShouldProcess($registryPath, "Clear registry property: $registryProperty")) {
-                        Clear-ItemProperty -Path $registryPath -Name $registryProperty -ErrorAction SilentlyContinue
+                        if ($null -ne (Get-ItemProperty -Path $registryPath -Name $registryProperty -ErrorAction SilentlyContinue)) {
+                            Clear-ItemProperty -Path $registryPath -Name $registryProperty -ErrorAction SilentlyContinue
+                        }
+                        else {
+                            New-ItemProperty -Path $registryPath -Name $registryProperty -Value $null -PropertyType $registryType -Force | Out-Null
+                        }
                     }
                 }
                 else {
