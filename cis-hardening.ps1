@@ -217,12 +217,12 @@ begin {
             try {
                 if ($registryValue -eq 'N/A') {
                     if ($PSCmdlet.ShouldProcess("$($registryPath)", "Remove registry property: $registryProperty")) {
-                        Remove-ItemProperty -Path $registryPath -Name $registryProperty
+                        Remove-ItemProperty -Path $registryPath -Name $registryProperty -ErrorAction SilentlyContinue
                     }
                 }
                 elseif ($registryValue -eq 'ValueNeedsToBeCleared') {
                     if ($PSCmdlet.ShouldProcess($registryPath, "Clear registry property: $registryProperty")) {
-                        Clear-ItemProperty -Path $registryPath -Name $registryProperty
+                        Clear-ItemProperty -Path $registryPath -Name $registryProperty -ErrorAction SilentlyContinue
                     }
                 }
                 else {
@@ -261,7 +261,7 @@ begin {
             [string] $controlID,
 
             [Parameter(Mandatory = $true)]
-            [ValidateSet('MINPWLEN', 'MINPWAGE', 'uniquepw', 'lockoutduration', 'lockoutthreshold', 'lockoutwindow')]
+            [ValidateSet('MINPWAGE', 'MAXPWAGE', 'MINPWLEN', 'uniquepw', 'lockoutthreshold', 'lockoutduration', 'lockoutwindow')]
             [string] $netAccountsType,
 
             [Parameter(Mandatory = $true)]
@@ -277,11 +277,12 @@ begin {
             Write-Log -Object "Hardening" -Message "Configuring ControlID: $controlID" -Severity Information -logType Host
 
             switch ($netAccountsType) {
-                'MINPWLEN' { $index = 3 }
                 'MINPWAGE' { $index = 1 }
+                'MAXPWAGE' { $index = 2 }
+                'MINPWLEN' { $index = 3 }
                 'uniquepw' { $index = 4 }
-                'lockoutduration' { $index = 6 }
                 'lockoutthreshold' { $index = 5 }
+                'lockoutduration' { $index = 6 }
                 'lockoutwindow' { $index = 7 }
             }
 
@@ -567,7 +568,6 @@ begin {
     }
 
     Write-Log -Object "Hardening" -Message "Operating System: $os" -Severity Information -logType Host
-
 }
 
 process {
@@ -603,38 +603,62 @@ process {
     # deploy settings
     else {
         # import controls based on environment
-        $controls = Import-Csv -Path $controlsCSV | Where-Object { ($_.ENABLED -eq $true) -and ($_.$($environment) -eq $true)  -and ($_.$($os) -eq $true)}
+        $controls = Import-Csv -Path $controlsCSV | Where-Object { ($_.ENABLED -eq "ENABLED") -and ($_.$($environment) -eq "ENABLED") -and ($_.$($os) -eq "ENABLED") -and ([int]$_.Level -le $level) }
 
         # Registry section
-        foreach ($control in ($controls | Where-Object { ($_.Type -eq "Registry") -and ([int]$_.Level -le $level) })) {
+        foreach ($control in ($controls | Where-Object { ($_.Type -eq "Registry") })) {
+            if (![string]::IsNullOrEmpty($control.$($($os) + "_value"))) {
+                $value = $control.$($($os) + "_value")
+            }
+            else {
+                $value = $control.Value
+            }
             if ($control.RegistryPath -like "HKEY_USERS*") {
                 foreach ($user in (Get-LocalUser)) {
                     $sid = (Get-LocalUser -Name $user).SID.value
                     If (Test-Path "Registry::HKEY_USERS\$sid") {
-                        Set-Registry -controlID $control.ControlID -registryPath "Registry::$($control.RegistryPath -replace '(?i).Default', $sid)" -registryProperty $control.RegistryProperty -registryType $control.RegistryType -registryValue $control.Value
+                        Set-Registry -controlID $control.ControlID -registryPath "Registry::$($control.RegistryPath -replace '(?i).Default', $sid)" -registryProperty $control.RegistryProperty -registryType $control.RegistryType -registryValue $value
                     }
                 }
             }
-            Set-Registry -controlID $control.ControlID -registryPath "Registry::$($control.RegistryPath)" -registryProperty $control.RegistryProperty -registryType $control.RegistryType -registryValue $control.Value
+            Set-Registry -controlID $control.ControlID -registryPath "Registry::$($control.RegistryPath)" -registryProperty $control.RegistryProperty -registryType $control.RegistryType -registryValue $value
         }
 
         # NetAccounts section
-        foreach ($control in ($controls | Where-Object { ($_.Type -eq "NetAccounts") -and ([int]$_.Level -le $level) })) {
-            Set-NetAccounts -controlID $control.ControlID -netAccountsType $control.netAccountsType -netAccountsValue $control.Value
+        foreach ($control in ($controls | Where-Object { ($_.Type -eq "NetAccounts") })) {
+            if (![string]::IsNullOrEmpty($control.$($($os) + "_value"))) {
+                $value = $control.$($($os) + "_value")
+            }
+            else {
+                $value = $control.Value
+            }
+            Set-NetAccounts -controlID $control.ControlID -netAccountsType $control.netAccountsType -netAccountsValue $Value
         }
 
         # CPrivilege section
-        foreach ($control in ($controls | Where-Object { ($_.Type -eq "CPrivilege") -and ([int]$_.Level -le $level) })) {
-            Set-CPrivilege -controlID $control.ControlID -identity $control.CPrivilegeIdentity -privilege $control.CPrivilegePrivilege -requiredValue $control.Value
+        foreach ($control in ($controls | Where-Object { ($_.Type -eq "CPrivilege") })) {
+            if (![string]::IsNullOrEmpty($control.$($($os) + "_value"))) {
+                $value = $control.$($($os) + "_value")
+            }
+            else {
+                $value = $control.Value
+            }
+            Set-CPrivilege -controlID $control.ControlID -identity $control.CPrivilegeIdentity -privilege $control.CPrivilegePrivilege -requiredValue $Value
         }
 
         # Audit Policy section
-        foreach ($control in ($controls | Where-Object { ($_.Type -eq "AuditPol") -and ([int]$_.Level -le $level) })) {
-            Set-AuditPol -controlID $control.ControlID -auditPolCategory $control.AuditPolCategory -auditPolValue $control.Value
+        foreach ($control in ($controls | Where-Object { ($_.Type -eq "AuditPol") })) {
+            if (![string]::IsNullOrEmpty($control.$($($os) + "_value"))) {
+                $value = $control.$($($os) + "_value")
+            }
+            else {
+                $value = $control.Value
+            }
+            Set-AuditPol -controlID $control.ControlID -auditPolCategory $control.AuditPolCategory -auditPolValue $Value
         }
 
         # Rename accounts section
-        foreach ($control in ($controls | Where-Object { ($_.Type -eq "Account") -and ([int]$_.Level -le $level) })) {
+        foreach ($control in ($controls | Where-Object { ($_.Type -eq "Account") })) {
 
             if ($control.ControlID -eq '8366') {
                 if (($user = Get-LocalUser | Where-Object { $_.SID -like 'S-1-5-*-501' }).Name -eq "Guest") {
