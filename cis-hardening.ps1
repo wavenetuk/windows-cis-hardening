@@ -38,7 +38,7 @@ param (
                 throw "The path provided is neither a valid URL nor a valid file path: $_"
             }
         })]
-    [string] $controlsCSV = "https://raw.githubusercontent.com/paul-e-martin/nerdio/refs/heads/main/windows-script/windows-cis-hardening/controls.csv",
+    [string] $controlsCSV = "https://raw.githubusercontent.com/OnDemand-Engineering/windows-cis-hardening/refs/heads/main/controls.csv",
 
     [Parameter(Mandatory = $false, ParameterSetName = 'Default')]
     [ValidateNotNullOrEmpty()]
