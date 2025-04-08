@@ -513,7 +513,7 @@ begin {
     if ($controlsCSV -match '^(http|https)://') {
         try {
             $fileName = 'controls.csv'
-            $downloadPath = Join-Path -Path (Get-Location).Path -ChildPath $fileName
+            $downloadPath = Join-Path -Path $env:SYSTEMROOT\temp -ChildPath $fileName
             Invoke-WebRequest -Uri $controlsCSV -OutFile $fileName
             if (Test-Path $downloadPath -PathType 'Leaf') {
                 $controlsCSV = $downloadPath
@@ -528,6 +528,8 @@ begin {
     }
 
     [array]$global:results = @()
+
+    Write-Host "$($MyInvocation.MyCommand.Definition)"
 
     $global:logPath = Join-Path -Path (Split-Path -Parent $MyInvocation.MyCommand.Definition) -ChildPath "$([io.path]::GetFileNameWithoutExtension($MyInvocation.MyCommand.Name))_log"
 
@@ -676,6 +678,9 @@ process {
 }
 
 end {
+    # Remove controls CSV
+    Remove-item -Path $controlsCSV -Force
+
     # Output file
     Write-Host "Please reboot the server to ensure that all settings are correctly applied following completion of this script" -ForegroundColor Green
     if ($outputBool) {
