@@ -1,3 +1,9 @@
+## v0.2.3 (2025-04-08)
+
+### Fix
+
+- update parameter requirements and enhance OS detection in cis-hardening script (#3)
+
 ## v0.2.2 (2025-02-28)
 
 ### Fix
