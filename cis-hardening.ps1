@@ -217,12 +217,12 @@ begin {
             try {
                 if ($registryValue -eq 'N/A') {
                     if ($PSCmdlet.ShouldProcess("$($registryPath)", "Remove registry property: $registryProperty")) {
-                        Remove-ItemProperty -Path $registryPath -Name $registryProperty
+                        Remove-ItemProperty -Path $registryPath -Name $registryProperty -ErrorAction SilentlyContinue
                     }
                 }
                 elseif ($registryValue -eq 'ValueNeedsToBeCleared') {
                     if ($PSCmdlet.ShouldProcess($registryPath, "Clear registry property: $registryProperty")) {
-                        Clear-ItemProperty -Path $registryPath -Name $registryProperty
+                        Clear-ItemProperty -Path $registryPath -Name $registryProperty -ErrorAction SilentlyContinue
                     }
                 }
                 else {
@@ -261,7 +261,7 @@ begin {
             [string] $controlID,
 
             [Parameter(Mandatory = $true)]
-            [ValidateSet('MINPWLEN', 'MINPWAGE', 'uniquepw', 'lockoutduration', 'lockoutthreshold', 'lockoutwindow')]
+            [ValidateSet('MINPWAGE', 'MAXPWAGE', 'MINPWLEN', 'uniquepw', 'lockoutthreshold', 'lockoutduration', 'lockoutwindow')]
             [string] $netAccountsType,
 
             [Parameter(Mandatory = $true)]
@@ -277,11 +277,12 @@ begin {
             Write-Log -Object "Hardening" -Message "Configuring ControlID: $controlID" -Severity Information -logType Host
 
             switch ($netAccountsType) {
-                'MINPWLEN' { $index = 3 }
                 'MINPWAGE' { $index = 1 }
+                'MAXPWAGE' { $index = 2 }
+                'MINPWLEN' { $index = 3 }
                 'uniquepw' { $index = 4 }
-                'lockoutduration' { $index = 6 }
                 'lockoutthreshold' { $index = 5 }
+                'lockoutduration' { $index = 6 }
                 'lockoutwindow' { $index = 7 }
             }
 
@@ -554,6 +555,18 @@ begin {
 
     Write-Log -Object "Hardening" -Message "Environment: $environment" -Severity Information -logType Host
 
+    # Get OS Name
+    $osName = (Get-ComputerInfo).OsName
+    $os = if ($osName -match "Server \d+") {
+        $matches[0].Replace(" ", "_").toupper()
+    }
+    elseif ($osName -match "Windows \d+") {
+        $matches[0].Replace(" ", "_").toupper()
+    }
+    else {
+        $osName
+    }
+    Write-Log -Object "Hardening" -Message "Operating System: $os" -Severity Information -logType Host
 }
 
 process {
@@ -589,38 +602,62 @@ process {
     # deploy settings
     else {
         # import controls based on environment
-        $controls = Import-Csv -Path $controlsCSV | Where-Object { ($_.ENABLED -eq $true) -and ($_.$($environment) -eq $true) }
+        $controls = Import-Csv -Path $controlsCSV | Where-Object { ($_.ENABLED -eq "ENABLED") -and ($_.$($environment) -eq "ENABLED") -and ($_.$($os) -eq "ENABLED") -and ([int]$_.Level -le $level) }
 
         # Registry section
-        foreach ($control in ($controls | Where-Object { ($_.Type -eq "Registry") -and ([int]$_.Level -le $level) })) {
+        foreach ($control in ($controls | Where-Object { ($_.Type -eq "Registry") })) {
+            if (![string]::IsNullOrEmpty($control.$($($os) + "_value"))) {
+                $value = $control.$($($os) + "_value")
+            }
+            else {
+                $value = $control.Value
+            }
             if ($control.RegistryPath -like "HKEY_USERS*") {
                 foreach ($user in (Get-LocalUser)) {
                     $sid = (Get-LocalUser -Name $user).SID.value
                     If (Test-Path "Registry::HKEY_USERS\$sid") {
-                        Set-Registry -controlID $control.ControlID -registryPath "Registry::$($control.RegistryPath -replace '(?i).Default', $sid)" -registryProperty $control.RegistryProperty -registryType $control.RegistryType -registryValue $control.Value
+                        Set-Registry -controlID $control.ControlID -registryPath "Registry::$($control.RegistryPath -replace '(?i).Default', $sid)" -registryProperty $control.RegistryProperty -registryType $control.RegistryType -registryValue $value
                     }
                 }
             }
-            Set-Registry -controlID $control.ControlID -registryPath "Registry::$($control.RegistryPath)" -registryProperty $control.RegistryProperty -registryType $control.RegistryType -registryValue $control.Value
+            Set-Registry -controlID $control.ControlID -registryPath "Registry::$($control.RegistryPath)" -registryProperty $control.RegistryProperty -registryType $control.RegistryType -registryValue $value
         }
 
         # NetAccounts section
-        foreach ($control in ($controls | Where-Object { ($_.Type -eq "NetAccounts") -and ([int]$_.Level -le $level) })) {
-            Set-NetAccounts -controlID $control.ControlID -netAccountsType $control.netAccountsType -netAccountsValue $control.Value
+        foreach ($control in ($controls | Where-Object { ($_.Type -eq "NetAccounts") })) {
+            if (![string]::IsNullOrEmpty($control.$($($os) + "_value"))) {
+                $value = $control.$($($os) + "_value")
+            }
+            else {
+                $value = $control.Value
+            }
+            Set-NetAccounts -controlID $control.ControlID -netAccountsType $control.netAccountsType -netAccountsValue $Value
         }
 
         # CPrivilege section
-        foreach ($control in ($controls | Where-Object { ($_.Type -eq "CPrivilege") -and ([int]$_.Level -le $level) })) {
-            Set-CPrivilege -controlID $control.ControlID -identity $control.CPrivilegeIdentity -privilege $control.CPrivilegePrivilege -requiredValue $control.Value
+        foreach ($control in ($controls | Where-Object { ($_.Type -eq "CPrivilege") })) {
+            if (![string]::IsNullOrEmpty($control.$($($os) + "_value"))) {
+                $value = $control.$($($os) + "_value")
+            }
+            else {
+                $value = $control.Value
+            }
+            Set-CPrivilege -controlID $control.ControlID -identity $control.CPrivilegeIdentity -privilege $control.CPrivilegePrivilege -requiredValue $Value
         }
 
         # Audit Policy section
-        foreach ($control in ($controls | Where-Object { ($_.Type -eq "AuditPol") -and ([int]$_.Level -le $level) })) {
-            Set-AuditPol -controlID $control.ControlID -auditPolCategory $control.AuditPolCategory -auditPolValue $control.Value
+        foreach ($control in ($controls | Where-Object { ($_.Type -eq "AuditPol") })) {
+            if (![string]::IsNullOrEmpty($control.$($($os) + "_value"))) {
+                $value = $control.$($($os) + "_value")
+            }
+            else {
+                $value = $control.Value
+            }
+            Set-AuditPol -controlID $control.ControlID -auditPolCategory $control.AuditPolCategory -auditPolValue $Value
         }
 
         # Rename accounts section
-        foreach ($control in ($controls | Where-Object { ($_.Type -eq "Account") -and ([int]$_.Level -le $level) })) {
+        foreach ($control in ($controls | Where-Object { ($_.Type -eq "Account") })) {
 
             if ($control.ControlID -eq '8366') {
                 if (($user = Get-LocalUser | Where-Object { $_.SID -like 'S-1-5-*-501' }).Name -eq "Guest") {
@@ -632,26 +669,6 @@ process {
                 if (($user = Get-LocalUser | Where-Object { $_.SID -like 'S-1-5-*-500' }).Name -eq "Administrator") {
                     Rename-Account -controlID $control.ControlID -account $user.Name -newName $control.Value
                 }
-            }
-        }
-        # Enable Ping rules for Flex/Azure Environments - Monitoring Tooling - PING (LogicMonitor)
-        if ($environment -in 'VMWare', 'Azure') {
-            Enable-NetFirewallRule -Name "FPS-ICMP4-ERQ-In"
-            Enable-NetFirewallRule -Name "FPS-ICMP6-ERQ-In"
-            Enable-NetFirewallRule -Name "FPS-ICMP4-ERQ-Out"
-            Enable-NetFirewallRule -Name "FPS-ICMP6-ERQ-Out"
-        }
-        # Enable WMI rules for Flex/Azure Environments - Monitoring Tooling - WMI Parsing (LogicMonitor)
-        if ($environment -in 'VMWare', 'Azure') {
-            Enable-NetFirewallRule -Name "WMI-RPCSS-In-TCP"
-            Enable-NetFirewallRule -Name "WMI-WINMGMT-In-TCP"
-        }
-        # Add Firewall Rules to support Veeam Backup Tooling
-        if ($environment -eq 'VMWare') {
-            $nics = Get-NetAdapter
-            if ($nics.Name -eq "BUA") {
-                New-NetFirewallRule -Name "Veeam Enfield In" -Direction Inbound -Action Allow -Enabled True -Profile Any -RemoteAddress 10.221.196.180-10.221.196.181 -DisplayName "Veeam Enfield In"
-                New-NetFirewallRule -Name "Veeam Reading In" -Direction Inbound -Action Allow -Enabled True -Profile Any -RemoteAddress 10.251.196.180-10.251.196.181 -DisplayName "Veeam Reading In"
             }
         }
     }
