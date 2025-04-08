@@ -38,7 +38,7 @@ param (
                 throw "The path provided is neither a valid URL nor a valid file path: $_"
             }
         })]
-    [string] $controlsCSV = "https://raw.githubusercontent.com/paul-e-martin/nerdio/refs/heads/main/windows-script/windows-cis-hardening/controls.csv",
+    [string] $controlsCSV = "https://raw.githubusercontent.com/OnDemand-Engineering/windows-cis-hardening/refs/heads/main/controls.csv",
 
     [Parameter(Mandatory = $false, ParameterSetName = 'Default')]
     [ValidateNotNullOrEmpty()]
@@ -57,7 +57,11 @@ param (
     [Parameter(Mandatory = $true, ParameterSetName = 'RollBack')]
     [ValidateNotNullOrEmpty()]
     [ValidateScript( { If (Test-Path $_ -PathType 'Leaf') { $True } Else { Throw "Cannot find file $_" } })]
-    [string] $rollBackCSV
+    [string] $rollBackCSV,
+
+    [Parameter(Mandatory = $false, HelpMessage = 'Restart the virtual machine')]
+    [ValidateSet('true', 'false')]
+    [string] $restart = 'true'
 )
 
 begin {
@@ -70,6 +74,7 @@ begin {
     # Convert string to booleon. This method is required due to not being able to pass switch parameters via Azure Run Command extensions.
     $outputBool = [System.Convert]::ToBoolean($output)
     $rollBackBool = [System.Convert]::ToBoolean($rollBack)
+    $restartParam = [System.Convert]::ToBoolean($restart)
 
     function Write-Log {
         [CmdletBinding()]
@@ -222,7 +227,12 @@ begin {
                 }
                 elseif ($registryValue -eq 'ValueNeedsToBeCleared') {
                     if ($PSCmdlet.ShouldProcess($registryPath, "Clear registry property: $registryProperty")) {
-                        Clear-ItemProperty -Path $registryPath -Name $registryProperty -ErrorAction SilentlyContinue
+                        if ($null -ne (Get-ItemProperty -Path $registryPath -Name $registryProperty -ErrorAction SilentlyContinue)) {
+                            Clear-ItemProperty -Path $registryPath -Name $registryProperty -ErrorAction SilentlyContinue
+                        }
+                        else {
+                            New-ItemProperty -Path $registryPath -Name $registryProperty -Value $null -PropertyType $registryType -Force | Out-Null
+                        }
                     }
                 }
                 else {
@@ -513,8 +523,8 @@ begin {
     if ($controlsCSV -match '^(http|https)://') {
         try {
             $fileName = 'controls.csv'
-            $downloadPath = Join-Path -Path (Get-Location).Path -ChildPath $fileName
-            Invoke-WebRequest -Uri $controlsCSV -OutFile $fileName
+            $downloadPath = Join-Path -Path $env:SYSTEMROOT\temp -ChildPath $fileName
+            Invoke-WebRequest -Uri $controlsCSV -OutFile $downloadPath
             if (Test-Path $downloadPath -PathType 'Leaf') {
                 $controlsCSV = $downloadPath
             }
@@ -529,7 +539,7 @@ begin {
 
     [array]$global:results = @()
 
-    $global:logPath = Join-Path -Path (Split-Path -Parent $MyInvocation.MyCommand.Definition) -ChildPath "$([io.path]::GetFileNameWithoutExtension($MyInvocation.MyCommand.Name))_log"
+    $global:logPath = Join-Path -Path $env:SYSTEMROOT\temp -ChildPath "cis-hardening-level-$($level)_log"
 
     # Determine environment
     try {
@@ -676,11 +686,19 @@ process {
 }
 
 end {
+    # Remove controls CSV
+    Remove-item -Path $controlsCSV -Force
+
     # Output file
     Write-Host "Please reboot the server to ensure that all settings are correctly applied following completion of this script" -ForegroundColor Green
     if ($outputBool) {
         $WhatIfPreference = $false
-        $global:results | Export-Csv -Path (Join-Path (split-path -parent $MyInvocation.MyCommand.Definition) "cis-hardening-level-$level-output.csv") -Force -NoTypeInformation
+        $global:results | Export-Csv -Path (Join-Path -Path $env:SYSTEMROOT\temp -ChildPath "cis-hardening-level-$level-output.csv") -Force -NoTypeInformation
     }
     $VerbosePreference = $saveVerbosePreference
+
+    # Restart Computer
+    if ($restartParam) {
+        Restart-Computer -Force
+    }
 }
