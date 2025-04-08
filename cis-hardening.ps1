@@ -534,7 +534,7 @@ begin {
 
     [array]$global:results = @()
 
-    Write-Host "$($MyInvocation.MyCommand.Definition)"
+    Write-Host "$($MyInvocation)"
 
     $global:logPath = Join-Path -Path (Split-Path -Parent $MyInvocation.MyCommand.Definition) -ChildPath "$([io.path]::GetFileNameWithoutExtension($MyInvocation.MyCommand.Name))_log"
 
