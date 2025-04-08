@@ -534,9 +534,7 @@ begin {
 
     [array]$global:results = @()
 
-    Write-Host "$($MyInvocation)"
-
-    $global:logPath = Join-Path -Path (Split-Path -Parent $MyInvocation.MyCommand.Definition) -ChildPath "$([io.path]::GetFileNameWithoutExtension($MyInvocation.MyCommand.Name))_log"
+    $global:logPath = Join-Path -Path $env:SYSTEMROOT\temp -ChildPath "cis-hardening-level-$($level)_log"
 
     # Determine environment
     try {
@@ -690,7 +688,7 @@ end {
     Write-Host "Please reboot the server to ensure that all settings are correctly applied following completion of this script" -ForegroundColor Green
     if ($outputBool) {
         $WhatIfPreference = $false
-        $global:results | Export-Csv -Path (Join-Path (split-path -parent $MyInvocation.MyCommand.Definition) "cis-hardening-level-$level-output.csv") -Force -NoTypeInformation
+        $global:results | Export-Csv -Path (Join-Path -Path $env:SYSTEMROOT\temp -ChildPath "cis-hardening-level-$level-output.csv") -Force -NoTypeInformation
     }
     $VerbosePreference = $saveVerbosePreference
 
