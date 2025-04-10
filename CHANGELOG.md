@@ -1,3 +1,9 @@
+## v0.2.5 (2025-04-10)
+
+### Fix
+
+- add -UseBasicParsing to Invoke-WebRequest for controls.csv download (#8)
+
 ## v0.2.4 (2025-04-10)
 
 ### Fix
