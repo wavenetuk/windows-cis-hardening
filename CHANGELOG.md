@@ -1,3 +1,9 @@
+## v0.2.4 (2025-04-10)
+
+### Fix
+
+- update controlsCSV URL and enable firewall rules in controls.csv (#7)
+
 ## v0.2.3 (2025-04-08)
 
 ### Fix
