@@ -524,7 +524,7 @@ begin {
         try {
             $fileName = 'controls.csv'
             $downloadPath = Join-Path -Path $env:SYSTEMROOT\temp -ChildPath $fileName
-            Invoke-WebRequest -Uri $controlsCSV -OutFile $downloadPath
+            Invoke-WebRequest -Uri $controlsCSV -OutFile $downloadPath -UseBasicParsing
             if (Test-Path $downloadPath -PathType 'Leaf') {
                 $controlsCSV = $downloadPath
             }
