@@ -1,3 +1,9 @@
+## v0.2.6 (2025-05-09)
+
+### Fix
+
+- update CIS hardening script description and example for Windows Server 2025 and Windows 11 (#10)
+
 ## v0.2.5 (2025-04-10)
 
 ### Fix
