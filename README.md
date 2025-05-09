@@ -2,7 +2,7 @@
 
 ## Getting started
 
-The cis-hardening.ps1 script will implement CIS L1-3 controls onto the Windows Server 2019 or Windows Server 2022 machine.
+The cis-hardening.ps1 script will implement CIS L1 controls onto a Windows Server 2025, Windows Server 2022 or Windows 11 machine.
 
 The controls.csv can be amended with additional controls and set to apply to specific environments. To do so:
 - Select the development branch
