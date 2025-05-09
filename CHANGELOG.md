@@ -1,3 +1,9 @@
+## v0.2.7 (2025-05-09)
+
+### Fix
+
+- update login banner policies to reflect Wavenet Acceptable Usage Policy (#12)
+
 ## v0.2.6 (2025-05-09)
 
 ### Fix
