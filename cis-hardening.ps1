@@ -1,15 +1,15 @@
 <#
     .DESCRIPTION
-    Windows Server 2019 and Windows Server 2022 CIS hardening script
+    Windows Server 2025, Windows Server 2022 and Windows 11 CIS hardening script
 
     .NOTES
-        Updated: 04/07/2024
+        Updated: 09/05/2025
         Author: Paul Martin & Dean Reynolds
 
     .EXAMPLE
-    .\CIS_L1-Hardening.ps1 -level 1 -output
+    .\CIS_L1-Hardening.ps1 -level 1 -output "true"
 
-    .\CIS_L1-Hardening.ps1 -rollBack -rollBackCSV ".\cis-hardening-level-1-output.csv"
+    .\CIS_L1-Hardening.ps1 -rollBack "true" -rollBackCSV "$env:SYSTEMROOT\temp\cis-hardening-level-1-output.csv"
 #>
 
 [CmdletBinding(DefaultParameterSetName = 'Default', SupportsShouldProcess = $true)]
