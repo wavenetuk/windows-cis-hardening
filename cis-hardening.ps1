@@ -46,6 +46,9 @@ param (
     [string] $level = 1,
 
     [Parameter(Mandatory = $false, ParameterSetName = 'Default')]
+    [string[]] $excludeControls = @(),
+
+    [Parameter(Mandatory = $false, ParameterSetName = 'Default')]
     [Parameter(Mandatory = $false, ParameterSetName = 'RollBack')]
     [ValidateSet('true', 'false')]
     [string] $output = 'true',
@@ -613,7 +616,9 @@ process {
     # deploy settings
     else {
         # import controls based on environment
-        $controls = Import-Csv -Path $controlsCSV | Where-Object { ($_.ENABLED -eq "ENABLED") -and ($_.$($environment) -eq "ENABLED") -and ($_.$($os) -eq "ENABLED") -and ([int]$_.Level -le $level) }
+        $controls = Import-Csv -Path $controlsCSV | Where-Object { ($_.ENABLED -eq "ENABLED") -and ($_.$($environment) -eq "ENABLED") -and ($_.$($os) -eq "ENABLED") -and ([int]$_.Level -le $level) -and ($_.ControlID -notin $excludeControls) }
+        $controls = Import-Csv -Path $controlsCSV | Where-Object { ([int]$_.Level -le $level) -and ($_.ControlID -notin $excludeControls) }
+
 
         # Registry section
         foreach ($control in ($controls | Where-Object { ($_.Type -eq "Registry") })) {
