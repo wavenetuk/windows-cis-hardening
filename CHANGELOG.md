@@ -1,3 +1,9 @@
+## v0.4.0 (2026-02-04)
+
+### Feat
+
+- add excludeControls parameter to filter out specific controls during execution (#14)
+
 ## v0.3.0 (2026-01-22)
 
 ### Feat
