@@ -484,7 +484,7 @@ begin {
         )
 
         begin {
-            $type = 'Account'
+            $type = 'AccountRename'
         }
 
         process {
@@ -509,6 +509,78 @@ begin {
                     Rename-LocalUser -Name $account -NewName $newName
                 }
                 $obj.NewValue = $newName
+            }
+            catch {
+                $obj.NewValue = $_.Exception.Message
+            }
+        }
+
+        end {
+            $global:results += $obj
+        }
+    }
+
+    function Set-AccountStatus {
+        <#
+            .DESCRIPTION
+            Function to get current value, set the required value and log.
+        #>
+
+        [CmdletBinding(SupportsShouldProcess = $true)]
+        param (
+            [Parameter(Mandatory = $true)]
+            [ValidateNotNullOrEmpty()]
+            [string] $controlID,
+
+            [Parameter(Mandatory = $true)]
+            [ValidateNotNullOrEmpty()]
+            [string] $account,
+
+            [Parameter(Mandatory = $true)]
+            [ValidateSet('Enabled', 'Disabled')]
+            [string] $status
+        )
+
+        begin {
+            $type = 'AccountStatus'
+        }
+
+        process {
+            Write-Log -Object "Hardening" -Message "Configuring ControlID: $controlID" -Severity Information -logType Host
+
+            $value = Get-LocalUser -Name $account | Select-Object -ExpandProperty Enabled
+
+            $value = switch ($value) {
+                $true { 'Enabled' }
+                $false { 'Disabled' }
+            }
+
+            $obj = [PSCustomObject]@{
+                "ControlID"           = $controlID
+                "Type"                = $type
+                "RegistryPath"        = 'N/A'
+                "RegistryProperty"    = 'N/A'
+                "RegistryType"        = 'N/A'
+                "NetAccountsType"     = 'N/A'
+                "CPrivilegeIdentity"  = 'N/A'
+                "CPrivilegePrivilege" = 'N/A'
+                "AuditPolCategory"    = 'N/A'
+                "OldValue"            = $value
+                "NewValue"            = ''
+            }
+
+            try {
+                if ($value -ne $status) {
+                    if ($PSCmdlet.ShouldProcess("$($account)", "Set status to $status")) {
+                        if ($status -eq 'Enabled') {
+                            Enable-LocalUser -Name $account
+                        }
+                        elseif ($status -eq 'Disabled') {
+                            Disable-LocalUser -Name $account
+                        }
+                    }
+                    $obj.NewValue = $status
+                }
             }
             catch {
                 $obj.NewValue = $_.Exception.Message
@@ -607,8 +679,14 @@ process {
             if ($item.type -eq 'AuditPol') {
                 Set-AuditPol -controlID $item.controlID -auditPolCategory $item.auditPolCategory -auditPolValue $item.OldValue
             }
-            if ($item.type -eq 'Account') {
+            if ($item.type -eq 'AccountRename') {
                 Rename-Account -controlID $item.controlID -account $item.NewValue -newName $item.OldValue
+            }
+            if ($item.type -eq 'AccountStatus') {
+                if ($control.ControlID -eq '8364') {
+                    $user = Get-LocalUser | Where-Object { $_.SID -like 'S-1-5-*-501' }
+                    Set-AccountStatus -controlID $control.ControlID -account $user.Name -status $item.OldValue
+                }
             }
         }
         $global:results | Export-Csv -Path (Join-Path (split-path -parent $MyInvocation.MyCommand.Definition) "cis-hardening-rollback-output.csv") -Force -NoTypeInformation
@@ -673,7 +751,7 @@ process {
         }
 
         # Rename accounts section
-        foreach ($control in ($controls | Where-Object { ($_.Type -eq "Account") })) {
+        foreach ($control in ($controls | Where-Object { ($_.Type -eq "AccountRename") })) {
 
             if ($control.ControlID -eq '8366') {
                 if (($user = Get-LocalUser | Where-Object { $_.SID -like 'S-1-5-*-501' }).Name -eq "Guest") {
@@ -685,6 +763,15 @@ process {
                 if (($user = Get-LocalUser | Where-Object { $_.SID -like 'S-1-5-*-500' }).Name -eq "Administrator") {
                     Rename-Account -controlID $control.ControlID -account $user.Name -newName $control.Value
                 }
+            }
+        }
+
+        # Account status section
+        foreach ($control in ($controls | Where-Object { ($_.Type -eq "AccountStatus") })) {
+
+            if ($control.ControlID -eq '8364') {
+                $user = Get-LocalUser | Where-Object { $_.SID -like 'S-1-5-*-501' }
+                Set-AccountStatus -controlID $control.ControlID -account $user.Name -status $control.Value
             }
         }
     }

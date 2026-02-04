@@ -1,3 +1,9 @@
+## v0.3.0 (2026-01-22)
+
+### Feat
+
+- add account status management and update controls for account renaming (#13)
+
 ## v0.2.7 (2025-05-09)
 
 ### Fix
