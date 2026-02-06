@@ -1,3 +1,9 @@
+## v0.4.1 (2026-02-06)
+
+### Fix
+
+- refine control filtering logic to improve execution accuracy (#15)
+
 ## v0.4.0 (2026-02-04)
 
 ### Feat
