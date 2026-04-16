@@ -693,6 +693,36 @@ process {
     }
     # deploy settings
     else {
+        # Check if Active Directory Domain Services (ADDS) role is installed (Windows Server only)
+        $addsInstalled = $false
+
+        if ($os -like "SERVER_*") {
+            Write-Log -Object "Hardening" -Message "Checking for Active Directory Domain Services (ADDS) role..." -Severity Information -logType Host
+
+            try {
+                $addsFeature = Get-WindowsFeature -Name "AD-Domain-Services" -ErrorAction SilentlyContinue
+                if ($null -ne $addsFeature -and $addsFeature.Installed) {
+                    $addsInstalled = $true
+                    Write-Log -Object "Hardening" -Message "ADDS role detected as installed" -Severity Information -logType Host
+
+                    # Exclude controls marked as DISABLED in Domain_Controller column
+                    $allControls = Import-Csv -Path $controlsCSV
+                    $dcDisabledControls = $allControls | Where-Object { $_.Domain_Controller -eq "DISABLED" } | Select-Object -ExpandProperty ControlID
+
+                    if ($dcDisabledControls.Count -gt 0) {
+                        Write-Log -Object "Hardening" -Message "Found $($dcDisabledControls.Count) control(s) to exclude for Domain Controllers: $($dcDisabledControls -join ', ')" -Severity Information -logType Host
+                        $excludeControls += $dcDisabledControls
+                    }
+                    else {
+                        Write-Log -Object "Hardening" -Message "No additional controls to exclude for Domain Controllers" -Severity Information -logType Host
+                    }
+                }
+            }
+            catch {
+                Write-Log -Object "Hardening" -Message "Unable to check ADDS feature: $($_.Exception.Message)" -Severity Warning -logType Host
+            }
+        }
+
         # import controls based on environment
         $controls = Import-Csv -Path $controlsCSV | Where-Object { ($_.ENABLED -eq "ENABLED") -and ($_.$($environment) -eq "ENABLED") -and ($_.$($os) -eq "ENABLED") -and ([int]$_.Level -le $level) -and ($_.ControlID -notin $excludeControls) }
 
