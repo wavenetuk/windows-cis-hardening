@@ -1,3 +1,9 @@
+## v0.5.0 (2026-06-11)
+
+### Feat
+
+- add bootstrap functions for module installation and logging (#19)
+
 ## v0.4.1 (2026-02-06)
 
 ### Fix
