@@ -69,10 +69,92 @@ param (
 
 begin {
 
-    # Install required PowerShell module
-    Install-PackageProvider -Name 'NuGet' -Scope CurrentUser -Confirm:$False -Force | Out-Null
-    Install-Module -Name 'Carbon' -Scope CurrentUser -Confirm:$False -Force | Out-Null
-    Install-Module -Name 'AuditPolicy' -Scope CurrentUser -Confirm:$False -Force | Out-Null
+    function Write-BootstrapMessage {
+        param (
+            [Parameter(Mandatory = $true)]
+            [ValidateNotNullOrEmpty()]
+            [string] $message,
+
+            [Parameter(Mandatory = $false)]
+            [ValidateSet('Information', 'Warning', 'Error')]
+            [string] $severity = 'Information'
+        )
+
+        $colour = switch ($severity) {
+            'Information' { 'White' }
+            'Warning' { 'Yellow' }
+            'Error' { 'Red' }
+        }
+
+        Write-Host "$(Get-Date -Format 'HH:mm:ss') - [Bootstrap] :: $message" -ForegroundColor $colour
+    }
+
+    function Install-NuGetProvider {
+        $provider = Get-PackageProvider -Name 'NuGet' -ListAvailable -ErrorAction SilentlyContinue |
+            Sort-Object Version -Descending |
+            Select-Object -First 1
+
+        if ($null -eq $provider) {
+            Write-BootstrapMessage -Message "Installing NuGet package provider" -Severity Information
+            Install-PackageProvider -Name 'NuGet' -MinimumVersion '2.8.5.201' -Scope CurrentUser -Confirm:$False -Force -ErrorAction Stop | Out-Null
+
+            $provider = Get-PackageProvider -Name 'NuGet' -ListAvailable -ErrorAction SilentlyContinue |
+                Sort-Object Version -Descending |
+                Select-Object -First 1
+        }
+
+        if ($null -eq $provider) {
+            throw "NuGet package provider is unavailable after installation attempt"
+        }
+    }
+
+    function Install-RequiredModule {
+        param (
+            [Parameter(Mandatory = $true)]
+            [ValidateNotNullOrEmpty()]
+            [string] $name,
+
+            [Parameter(Mandatory = $true)]
+            [ValidateNotNullOrEmpty()]
+            [string[]] $requiredCommands
+        )
+
+        $module = Get-Module -Name $name -ListAvailable |
+            Sort-Object Version -Descending |
+            Select-Object -First 1
+
+        if ($null -eq $module) {
+            Write-BootstrapMessage -Message "Installing PowerShell module '$name'" -Severity Information
+            Install-Module -Name $name -Scope CurrentUser -Confirm:$False -Force -ErrorAction Stop | Out-Null
+        }
+
+        Import-Module -Name $name -Force -ErrorAction Stop | Out-Null
+
+        foreach ($commandName in $requiredCommands) {
+            if ($null -eq (Get-Command -Name $commandName -ErrorAction SilentlyContinue)) {
+                throw "Module '$name' did not make required command '$commandName' available"
+            }
+        }
+    }
+
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+
+        if ($null -ne (Get-Command -Name 'Get-PSRepository' -ErrorAction SilentlyContinue)) {
+            $psGallery = Get-PSRepository -Name 'PSGallery' -ErrorAction SilentlyContinue
+            if (($null -ne $psGallery) -and ($psGallery.InstallationPolicy -ne 'Trusted')) {
+                Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted -ErrorAction Stop
+            }
+        }
+
+        Install-NuGetProvider
+        Install-RequiredModule -name 'Carbon' -requiredCommands @('Test-CPrivilege', 'Grant-CPrivilege', 'Revoke-CPrivilege')
+        Install-RequiredModule -name 'AuditPolicy' -requiredCommands @('Get-SystemAuditPolicy', 'Set-SystemAuditPolicy')
+    }
+    catch {
+        Write-BootstrapMessage -Message "Dependency bootstrap failed: $($_.Exception.Message)" -Severity Error
+        throw
+    }
 
     # Convert string to booleon. This method is required due to not being able to pass switch parameters via Azure Run Command extensions.
     $outputBool = [System.Convert]::ToBoolean($output)
