@@ -62,40 +62,6 @@ param (
 )
 
 begin {
-
-    function Add-CommandParameterIfSupported {
-        param (
-            [Parameter(Mandatory = $true)]
-            [hashtable] $parameterSet,
-
-            [Parameter(Mandatory = $true)]
-            [ValidateNotNullOrEmpty()]
-            [string] $commandName,
-
-            [Parameter(Mandatory = $true)]
-            [ValidateNotNullOrEmpty()]
-            [string] $parameterName,
-
-            [Parameter(Mandatory = $true)]
-            $parameterValue
-        )
-
-        $command = Get-Command -Name $commandName -ErrorAction Stop
-        if ($command.Parameters.ContainsKey($parameterName)) {
-            $parameterSet[$parameterName] = $parameterValue
-        }
-    }
-
-    function Get-ModuleInstallScope {
-        $currentIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-
-        if ($currentIdentity.User -and $currentIdentity.User.Value -eq 'S-1-5-18') {
-            return 'AllUsers'
-        }
-
-        return 'CurrentUser'
-    }
-
     function Write-BootstrapMessage {
         param (
             [Parameter(Mandatory = $true)]
@@ -116,100 +82,188 @@ begin {
         Write-Host "$(Get-Date -Format 'HH:mm:ss') - [Bootstrap] :: $message" -ForegroundColor $colour
     }
 
-    function Install-NuGetProvider {
-        $installScope = Get-ModuleInstallScope
-
-        $installParams = @{
-            Name           = 'NuGet'
-            MinimumVersion = '2.8.5.201'
-            Scope          = $installScope
-            Force          = $true
-            ErrorAction    = 'Stop'
-        }
-
-        Add-CommandParameterIfSupported -parameterSet $installParams -commandName 'Install-PackageProvider' -parameterName 'Confirm' -parameterValue $false
-        Add-CommandParameterIfSupported -parameterSet $installParams -commandName 'Install-PackageProvider' -parameterName 'ForceBootstrap' -parameterValue $true
-
-        $provider = Get-PackageProvider -Name 'NuGet' -ListAvailable -ErrorAction SilentlyContinue |
-            Sort-Object Version -Descending |
-            Select-Object -First 1
-
-        if ($null -eq $provider) {
-            Write-BootstrapMessage -Message "Installing NuGet package provider" -Severity Information
-            Install-PackageProvider @installParams | Out-Null
-
-            $provider = Get-PackageProvider -Name 'NuGet' -ListAvailable -ErrorAction SilentlyContinue |
-                Sort-Object Version -Descending |
-                Select-Object -First 1
-        }
-
-        if ($null -eq $provider) {
-            throw "NuGet package provider is unavailable after installation attempt"
-        }
-    }
-
-    function Install-RequiredModule {
+    function Resolve-PrivilegePrincipal {
         param (
             [Parameter(Mandatory = $true)]
             [ValidateNotNullOrEmpty()]
-            [string] $name,
-
-            [Parameter(Mandatory = $true)]
-            [ValidateNotNullOrEmpty()]
-            [string[]] $requiredCommands
+            [string] $identity
         )
 
-        $installScope = Get-ModuleInstallScope
-        $installParams = @{
-            Name        = $name
-            Scope       = $installScope
-            Repository  = 'PSGallery'
-            Force       = $true
-            ErrorAction = 'Stop'
+        $wellKnownPrincipals = @{
+            'Local account' = '*S-1-5-113'
+            'Local account and member of Administrators group' = '*S-1-5-114'
         }
 
-        Add-CommandParameterIfSupported -parameterSet $installParams -commandName 'Install-Module' -parameterName 'Confirm' -parameterValue $false
-        Add-CommandParameterIfSupported -parameterSet $installParams -commandName 'Install-Module' -parameterName 'AllowClobber' -parameterValue $true
-        Add-CommandParameterIfSupported -parameterSet $installParams -commandName 'Install-Module' -parameterName 'AcceptLicense' -parameterValue $true
-
-        $module = Get-Module -Name $name -ListAvailable |
-            Sort-Object Version -Descending |
-            Select-Object -First 1
-
-        if ($null -eq $module) {
-            Write-BootstrapMessage -Message "Installing PowerShell module '$name'" -Severity Information
-            Install-Module @installParams | Out-Null
+        if ($wellKnownPrincipals.ContainsKey($identity)) {
+            return $wellKnownPrincipals[$identity]
         }
 
-        Import-Module -Name $name -Force -ErrorAction Stop | Out-Null
-
-        foreach ($commandName in $requiredCommands) {
-            if ($null -eq (Get-Command -Name $commandName -ErrorAction SilentlyContinue)) {
-                throw "Module '$name' did not make required command '$commandName' available"
+        foreach ($candidate in @($identity, "BUILTIN\$identity", "NT AUTHORITY\$identity")) {
+            try {
+                $sid = ([System.Security.Principal.NTAccount]$candidate).Translate([System.Security.Principal.SecurityIdentifier]).Value
+                return "*$sid"
             }
+            catch {
+                continue
+            }
+        }
+
+        throw "Unable to resolve identity '$identity' to a security identifier"
+    }
+
+    function Get-PrivilegeAssignmentSet {
+        param (
+            [Parameter(Mandatory = $true)]
+            [ValidateNotNullOrEmpty()]
+            [string] $privilege
+        )
+
+        if (-not $script:privilegeAssignments.ContainsKey($privilege)) {
+            $script:privilegeAssignments[$privilege] = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        }
+
+        return ,$script:privilegeAssignments[$privilege]
+    }
+
+    function Initialize-PrivilegeAssignments {
+        if ($script:privilegeAssignmentsLoaded) {
+            return
+        }
+
+        $script:privilegeAssignments = @{}
+        $script:privilegeAssignmentsLoaded = $true
+        $script:privilegeAssignmentsDirty = $false
+
+        $exportPath = Join-Path -Path $env:TEMP -ChildPath 'cis-hardening-user-rights-export.inf'
+        & secedit.exe /export /cfg $exportPath /areas USER_RIGHTS | Out-Null
+
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to export current user rights assignments with secedit.exe"
+        }
+
+        $inPrivilegeSection = $false
+        foreach ($line in (Get-Content -Path $exportPath -ErrorAction Stop)) {
+            $trimmedLine = $line.Trim()
+
+            if ($trimmedLine -eq '[Privilege Rights]') {
+                $inPrivilegeSection = $true
+                continue
+            }
+
+            if (-not $inPrivilegeSection) {
+                continue
+            }
+
+            if ($trimmedLine.StartsWith('[')) {
+                break
+            }
+
+            if ([string]::IsNullOrWhiteSpace($trimmedLine) -or $trimmedLine.StartsWith(';')) {
+                continue
+            }
+
+            $name, $value = $trimmedLine -split '=', 2
+            $assignmentSet = Get-PrivilegeAssignmentSet -privilege $name.Trim()
+            foreach ($entry in (($value -split ',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })) {
+                [void]$assignmentSet.Add($entry)
+            }
+        }
+
+        Remove-Item -Path $exportPath -Force -ErrorAction SilentlyContinue
+    }
+
+    function Save-PrivilegeAssignments {
+        if (-not $script:privilegeAssignmentsLoaded -or -not $script:privilegeAssignmentsDirty) {
+            return
+        }
+
+        $policyPath = Join-Path -Path $env:TEMP -ChildPath 'cis-hardening-user-rights.inf'
+        $databasePath = Join-Path -Path $env:TEMP -ChildPath 'cis-hardening-user-rights.sdb'
+
+        $policyContent = @(
+            '[Unicode]'
+            'Unicode=yes'
+            '[Version]'
+            'signature="$CHICAGO$"'
+            'Revision=1'
+            '[Privilege Rights]'
+        )
+
+        foreach ($entry in ($script:privilegeAssignments.GetEnumerator() | Sort-Object Name)) {
+            $assignments = $entry.Value | Sort-Object
+            $policyContent += "{0} = {1}" -f $entry.Key, ($assignments -join ',')
+        }
+
+        Set-Content -Path $policyPath -Value $policyContent -Encoding ASCII
+        & secedit.exe /configure /db $databasePath /cfg $policyPath /areas USER_RIGHTS | Out-Null
+
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to apply updated user rights assignments with secedit.exe"
+        }
+
+        Remove-Item -Path $policyPath, $databasePath -Force -ErrorAction SilentlyContinue
+        $script:privilegeAssignmentsDirty = $false
+    }
+
+    function Get-AuditPolicyValueNative {
+        param (
+            [Parameter(Mandatory = $true)]
+            [ValidateNotNullOrEmpty()]
+            [string] $auditPolCategory
+        )
+
+        $auditPolicyOutput = & auditpol.exe /get /subcategory:"$auditPolCategory"
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to read audit policy for subcategory '$auditPolCategory'"
+        }
+
+        $policyLine = $auditPolicyOutput |
+            Where-Object { $_ -match '^(?<subcategory>.+?)\s{2,}(?<setting>No Auditing|Success and Failure|Success|Failure)\s*$' } |
+            Where-Object { $_ -match "^\s*$([regex]::Escape($auditPolCategory))\s{2,}" } |
+            Select-Object -Last 1
+
+        if ($null -eq $policyLine) {
+            throw "Unable to parse audit policy output for subcategory '$auditPolCategory'"
+        }
+
+        $setting = ([regex]::Match($policyLine, '^(?<subcategory>.+?)\s{2,}(?<setting>No Auditing|Success and Failure|Success|Failure)\s*$')).Groups['setting'].Value
+
+        switch ($setting) {
+            'Success and Failure' { return 'SuccessAndFailure' }
+            'Success' { return 'Success' }
+            'Failure' { return 'Failure' }
+            'No Auditing' { return 'NotConfigured' }
+            default { throw "Unsupported audit policy setting '$setting' for subcategory '$auditPolCategory'" }
+        }
+    }
+
+    function Set-AuditPolicyValueNative {
+        param (
+            [Parameter(Mandatory = $true)]
+            [ValidateNotNullOrEmpty()]
+            [string] $auditPolCategory,
+
+            [Parameter(Mandatory = $true)]
+            [ValidateSet('SuccessAndFailure', 'Success', 'Failure', 'NotConfigured')]
+            [string] $auditPolValue
+        )
+
+        $arguments = switch ($auditPolValue) {
+            'SuccessAndFailure' { @('/set', "/subcategory:$auditPolCategory", '/success:enable', '/failure:enable') }
+            'Success' { @('/set', "/subcategory:$auditPolCategory", '/success:enable', '/failure:disable') }
+            'Failure' { @('/set', "/subcategory:$auditPolCategory", '/success:disable', '/failure:enable') }
+            'NotConfigured' { @('/set', "/subcategory:$auditPolCategory", '/success:disable', '/failure:disable') }
+        }
+
+        & auditpol.exe @arguments | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to set audit policy for subcategory '$auditPolCategory'"
         }
     }
 
     try {
         [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-
-        if ($null -ne (Get-Command -Name 'Get-PSRepository' -ErrorAction SilentlyContinue)) {
-            $psGallery = Get-PSRepository -Name 'PSGallery' -ErrorAction SilentlyContinue
-            if (($null -ne $psGallery) -and ($psGallery.InstallationPolicy -ne 'Trusted')) {
-                $setRepositoryParams = @{
-                    Name               = 'PSGallery'
-                    InstallationPolicy = 'Trusted'
-                    ErrorAction        = 'Stop'
-                }
-
-                Add-CommandParameterIfSupported -parameterSet $setRepositoryParams -commandName 'Set-PSRepository' -parameterName 'Confirm' -parameterValue $false
-                Set-PSRepository @setRepositoryParams
-            }
-        }
-
-        Install-NuGetProvider
-        Install-RequiredModule -name 'Carbon' -requiredCommands @('Test-CPrivilege', 'Grant-CPrivilege', 'Revoke-CPrivilege')
-        Install-RequiredModule -name 'AuditPolicy' -requiredCommands @('Get-SystemAuditPolicy', 'Set-SystemAuditPolicy')
+        Write-BootstrapMessage -Message 'Using built-in security policy commands for unattended execution' -Severity Information
     }
     catch {
         Write-BootstrapMessage -Message "Dependency bootstrap failed: $($_.Exception.Message)" -Severity Error
@@ -505,7 +559,10 @@ begin {
         process {
             Write-Log -Object "Hardening" -Message "Configuring ControlID: $controlID" -Severity Information -logType Host
 
-            $value = Test-CPrivilege -Identity $identity -Privilege $privilege
+            Initialize-PrivilegeAssignments
+            $principal = Resolve-PrivilegePrincipal -identity $identity
+            $assignmentSet = Get-PrivilegeAssignmentSet -privilege $privilege
+            $value = if ($assignmentSet.Contains($principal)) { 'True' } else { 'False' }
 
             $obj = [PSCustomObject]@{
                 "ControlID"           = $controlID
@@ -524,12 +581,16 @@ begin {
             try {
                 if ($requiredValue -eq 'True') {
                     if ($PSCmdlet.ShouldProcess("$($identity)", "Grant $privilege")) {
-                        Grant-CPrivilege -Identity $identity -Privilege $privilege
+                        if ($assignmentSet.Add($principal)) {
+                            $script:privilegeAssignmentsDirty = $true
+                        }
                     }
                 }
                 if ($requiredValue -eq 'False') {
                     if ($PSCmdlet.ShouldProcess("$($identity)", "Revoke $privilege")) {
-                        Revoke-CPrivilege -Identity $identity -Privilege $privilege
+                        if ($assignmentSet.Remove($principal)) {
+                            $script:privilegeAssignmentsDirty = $true
+                        }
                     }
                 }
                 $obj.NewValue = $requiredValue
@@ -572,7 +633,7 @@ begin {
         process {
             Write-Log -Object "Hardening" -Message "Configuring ControlID: $controlID" -Severity Information -logType Host
 
-            $value = (Get-SystemAuditPolicy -Policy $auditPolCategory).Value
+            $value = Get-AuditPolicyValueNative -auditPolCategory $auditPolCategory
 
             $obj = [PSCustomObject]@{
                 "ControlID"           = $controlID
@@ -590,7 +651,7 @@ begin {
 
             try {
                 if ($PSCmdlet.ShouldProcess("$($auditPolCategory)", "Set $auditPolValue")) {
-                    Set-SystemAuditPolicy -Policy $auditPolCategory -Value $auditPolValue
+                    Set-AuditPolicyValueNative -auditPolCategory $auditPolCategory -auditPolValue $auditPolValue
                 }
                 $obj.NewValue = $auditPolValue
             }
@@ -831,6 +892,7 @@ process {
                 }
             }
         }
+        Save-PrivilegeAssignments
         $global:results | Export-Csv -Path (Join-Path (split-path -parent $MyInvocation.MyCommand.Definition) "cis-hardening-rollback-output.csv") -Force -NoTypeInformation
     }
     # deploy settings
@@ -908,6 +970,7 @@ process {
             }
             Set-CPrivilege -controlID $control.ControlID -identity $control.CPrivilegeIdentity -privilege $control.CPrivilegePrivilege -requiredValue $Value
         }
+        Save-PrivilegeAssignments
 
         # Audit Policy section
         foreach ($control in ($controls | Where-Object { ($_.Type -eq "AuditPol") })) {
