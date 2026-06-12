@@ -63,6 +63,29 @@ param (
 
 begin {
 
+    function Add-CommandParameterIfSupported {
+        param (
+            [Parameter(Mandatory = $true)]
+            [hashtable] $parameterSet,
+
+            [Parameter(Mandatory = $true)]
+            [ValidateNotNullOrEmpty()]
+            [string] $commandName,
+
+            [Parameter(Mandatory = $true)]
+            [ValidateNotNullOrEmpty()]
+            [string] $parameterName,
+
+            [Parameter(Mandatory = $true)]
+            $parameterValue
+        )
+
+        $command = Get-Command -Name $commandName -ErrorAction Stop
+        if ($command.Parameters.ContainsKey($parameterName)) {
+            $parameterSet[$parameterName] = $parameterValue
+        }
+    }
+
     function Get-ModuleInstallScope {
         $currentIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
 
@@ -96,13 +119,24 @@ begin {
     function Install-NuGetProvider {
         $installScope = Get-ModuleInstallScope
 
+        $installParams = @{
+            Name           = 'NuGet'
+            MinimumVersion = '2.8.5.201'
+            Scope          = $installScope
+            Force          = $true
+            ErrorAction    = 'Stop'
+        }
+
+        Add-CommandParameterIfSupported -parameterSet $installParams -commandName 'Install-PackageProvider' -parameterName 'Confirm' -parameterValue $false
+        Add-CommandParameterIfSupported -parameterSet $installParams -commandName 'Install-PackageProvider' -parameterName 'ForceBootstrap' -parameterValue $true
+
         $provider = Get-PackageProvider -Name 'NuGet' -ListAvailable -ErrorAction SilentlyContinue |
             Sort-Object Version -Descending |
             Select-Object -First 1
 
         if ($null -eq $provider) {
             Write-BootstrapMessage -Message "Installing NuGet package provider" -Severity Information
-            Install-PackageProvider -Name 'NuGet' -MinimumVersion '2.8.5.201' -Scope $installScope -Confirm:$False -Force -ForceBootstrap -ErrorAction Stop | Out-Null
+            Install-PackageProvider @installParams | Out-Null
 
             $provider = Get-PackageProvider -Name 'NuGet' -ListAvailable -ErrorAction SilentlyContinue |
                 Sort-Object Version -Descending |
@@ -126,6 +160,17 @@ begin {
         )
 
         $installScope = Get-ModuleInstallScope
+        $installParams = @{
+            Name        = $name
+            Scope       = $installScope
+            Repository  = 'PSGallery'
+            Force       = $true
+            ErrorAction = 'Stop'
+        }
+
+        Add-CommandParameterIfSupported -parameterSet $installParams -commandName 'Install-Module' -parameterName 'Confirm' -parameterValue $false
+        Add-CommandParameterIfSupported -parameterSet $installParams -commandName 'Install-Module' -parameterName 'AllowClobber' -parameterValue $true
+        Add-CommandParameterIfSupported -parameterSet $installParams -commandName 'Install-Module' -parameterName 'AcceptLicense' -parameterValue $true
 
         $module = Get-Module -Name $name -ListAvailable |
             Sort-Object Version -Descending |
@@ -133,7 +178,7 @@ begin {
 
         if ($null -eq $module) {
             Write-BootstrapMessage -Message "Installing PowerShell module '$name'" -Severity Information
-            Install-Module -Name $name -Scope $installScope -Repository 'PSGallery' -Confirm:$False -Force -AllowClobber -AcceptLicense -ErrorAction Stop | Out-Null
+            Install-Module @installParams | Out-Null
         }
 
         Import-Module -Name $name -Force -ErrorAction Stop | Out-Null
@@ -151,7 +196,14 @@ begin {
         if ($null -ne (Get-Command -Name 'Get-PSRepository' -ErrorAction SilentlyContinue)) {
             $psGallery = Get-PSRepository -Name 'PSGallery' -ErrorAction SilentlyContinue
             if (($null -ne $psGallery) -and ($psGallery.InstallationPolicy -ne 'Trusted')) {
-                Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted -Confirm:$False -ErrorAction Stop
+                $setRepositoryParams = @{
+                    Name               = 'PSGallery'
+                    InstallationPolicy = 'Trusted'
+                    ErrorAction        = 'Stop'
+                }
+
+                Add-CommandParameterIfSupported -parameterSet $setRepositoryParams -commandName 'Set-PSRepository' -parameterName 'Confirm' -parameterValue $false
+                Set-PSRepository @setRepositoryParams
             }
         }
 
