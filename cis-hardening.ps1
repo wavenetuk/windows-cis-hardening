@@ -18,17 +18,11 @@ param (
     [ValidateNotNullOrEmpty()]
     [ValidateScript({
             if ($_ -match '^(http|https)://') {
-                try {
-                    $response = Invoke-WebRequest -Uri $_ -ErrorAction Stop
-                    if ($response.StatusCode -eq 200) {
-                        $true
-                    }
-                    else {
-                        throw "URL is not accessible: $_"
-                    }
+                if ([System.Uri]::IsWellFormedUriString($_, [System.UriKind]::Absolute)) {
+                    $true
                 }
-                catch {
-                    throw "URL is not accessible: $_"
+                else {
+                    throw "The URL provided is not valid: $_"
                 }
             }
             elseif (Test-Path $_ -PathType 'Leaf') {
@@ -69,6 +63,16 @@ param (
 
 begin {
 
+    function Get-ModuleInstallScope {
+        $currentIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+
+        if ($currentIdentity.User -and $currentIdentity.User.Value -eq 'S-1-5-18') {
+            return 'AllUsers'
+        }
+
+        return 'CurrentUser'
+    }
+
     function Write-BootstrapMessage {
         param (
             [Parameter(Mandatory = $true)]
@@ -90,13 +94,15 @@ begin {
     }
 
     function Install-NuGetProvider {
+        $installScope = Get-ModuleInstallScope
+
         $provider = Get-PackageProvider -Name 'NuGet' -ListAvailable -ErrorAction SilentlyContinue |
             Sort-Object Version -Descending |
             Select-Object -First 1
 
         if ($null -eq $provider) {
             Write-BootstrapMessage -Message "Installing NuGet package provider" -Severity Information
-            Install-PackageProvider -Name 'NuGet' -MinimumVersion '2.8.5.201' -Scope CurrentUser -Confirm:$False -Force -ErrorAction Stop | Out-Null
+            Install-PackageProvider -Name 'NuGet' -MinimumVersion '2.8.5.201' -Scope $installScope -Confirm:$False -Force -ForceBootstrap -ErrorAction Stop | Out-Null
 
             $provider = Get-PackageProvider -Name 'NuGet' -ListAvailable -ErrorAction SilentlyContinue |
                 Sort-Object Version -Descending |
@@ -119,13 +125,15 @@ begin {
             [string[]] $requiredCommands
         )
 
+        $installScope = Get-ModuleInstallScope
+
         $module = Get-Module -Name $name -ListAvailable |
             Sort-Object Version -Descending |
             Select-Object -First 1
 
         if ($null -eq $module) {
             Write-BootstrapMessage -Message "Installing PowerShell module '$name'" -Severity Information
-            Install-Module -Name $name -Scope CurrentUser -Confirm:$False -Force -ErrorAction Stop | Out-Null
+            Install-Module -Name $name -Scope $installScope -Repository 'PSGallery' -Confirm:$False -Force -AllowClobber -AcceptLicense -ErrorAction Stop | Out-Null
         }
 
         Import-Module -Name $name -Force -ErrorAction Stop | Out-Null
@@ -143,7 +151,7 @@ begin {
         if ($null -ne (Get-Command -Name 'Get-PSRepository' -ErrorAction SilentlyContinue)) {
             $psGallery = Get-PSRepository -Name 'PSGallery' -ErrorAction SilentlyContinue
             if (($null -ne $psGallery) -and ($psGallery.InstallationPolicy -ne 'Trusted')) {
-                Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted -ErrorAction Stop
+                Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted -Confirm:$False -ErrorAction Stop
             }
         }
 
@@ -681,7 +689,7 @@ begin {
         try {
             $fileName = 'controls.csv'
             $downloadPath = Join-Path -Path $env:SYSTEMROOT\temp -ChildPath $fileName
-            Invoke-WebRequest -Uri $controlsCSV -OutFile $downloadPath -UseBasicParsing
+            Invoke-WebRequest -Uri $controlsCSV -OutFile $downloadPath -UseBasicParsing -TimeoutSec 60
             if (Test-Path $downloadPath -PathType 'Leaf') {
                 $controlsCSV = $downloadPath
             }
@@ -700,9 +708,9 @@ begin {
 
     # Determine environment
     try {
-        $apiCall = Invoke-RestMethod -Headers @{"Metadata" = "true" } -Method GET -Proxy $Null -Uri "http://169.254.169.254/metadata/versions"
+        $apiCall = Invoke-RestMethod -Headers @{"Metadata" = "true" } -Method GET -Proxy $Null -TimeoutSec 5 -Uri "http://169.254.169.254/metadata/versions"
         $apiVersion = $apiCall.apiVersions | Sort-Object -Descending | Select-Object -First 1
-        $instance = Invoke-RestMethod -Headers @{"Metadata" = "true" } -Method GET -Proxy $Null -Uri "http://169.254.169.254/metadata/instance?api-version=$apiVersion"
+        $instance = Invoke-RestMethod -Headers @{"Metadata" = "true" } -Method GET -Proxy $Null -TimeoutSec 5 -Uri "http://169.254.169.254/metadata/instance?api-version=$apiVersion"
     }
     catch {
         $instance = $null
