@@ -1,3 +1,9 @@
+## v0.7.0 (2026-06-12)
+
+### Feat
+
+- add support for dynamic command parameters in module installation functions (#21)
+
 ## v0.6.0 (2026-06-12)
 
 ### Feat
