@@ -1,3 +1,9 @@
+## v0.6.0 (2026-06-12)
+
+### Feat
+
+- enhance URL validation and improve module installation scope in hardening script (#20)
+
 ## v0.5.0 (2026-06-11)
 
 ### Feat
