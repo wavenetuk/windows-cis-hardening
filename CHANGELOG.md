@@ -1,3 +1,9 @@
+## v0.8.0 (2026-06-12)
+
+### Feat
+
+- implement privilege assignment management and enhance audit policy handling in hardening script (#22)
+
 ## v0.7.0 (2026-06-12)
 
 ### Feat
