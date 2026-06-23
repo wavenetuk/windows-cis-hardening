@@ -1,3 +1,9 @@
+## v0.9.0 (2026-06-23)
+
+### Feat
+
+- update 'Built-in Administrator' account name to '_LocalAdministrator' in controls.csv (#23)
+
 ## v0.8.0 (2026-06-12)
 
 ### Feat
