@@ -1,3 +1,9 @@
+## v0.10.0 (2026-07-06)
+
+### Feat
+
+- update 'Allow logon through Terminal Services' right for 'NT AUTHORITY\NETWORK SERVICE' to DISABLED in controls.csv (#25)
+
 ## v0.9.0 (2026-06-23)
 
 ### Feat
