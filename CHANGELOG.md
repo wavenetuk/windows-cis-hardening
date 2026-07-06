@@ -1,3 +1,9 @@
+## v0.11.0 (2026-07-06)
+
+### Feat
+
+- track modified privileges in hardening script and update controls.csv for 'Allow logon through Terminal Services' (#26)
+
 ## v0.10.0 (2026-07-06)
 
 ### Feat
