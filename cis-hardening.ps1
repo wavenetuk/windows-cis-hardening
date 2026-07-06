@@ -133,6 +133,13 @@ begin {
         $script:privilegeAssignments = @{}
         $script:privilegeAssignmentsLoaded = $true
         $script:privilegeAssignmentsDirty = $false
+        # Track only the privileges a control actually changes. secedit /configure is
+        # declarative (it sets the EXACT membership of every privilege in the template),
+        # so we must write back ONLY the privileges we modified. This preserves the
+        # incremental/merge behaviour of the previous Carbon Grant/Revoke-CPrivilege
+        # implementation and prevents unrelated rights (e.g. RDP logon) from being
+        # rewritten and stripped of existing members.
+        $script:modifiedPrivileges = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
         $exportPath = Join-Path -Path $env:TEMP -ChildPath 'cis-hardening-user-rights-export.inf'
         & secedit.exe /export /cfg $exportPath /areas USER_RIGHTS | Out-Null
@@ -190,6 +197,13 @@ begin {
         )
 
         foreach ($entry in ($script:privilegeAssignments.GetEnumerator() | Sort-Object Name)) {
+            # Only write privileges we actually changed. Every privilege listed in the
+            # template has its membership set to EXACTLY this value by secedit, so
+            # emitting an unmodified privilege here risks clearing members that were not
+            # captured during export. Leaving it out means secedit leaves it untouched.
+            if (-not $script:modifiedPrivileges.Contains($entry.Key)) {
+                continue
+            }
             $assignments = $entry.Value | Sort-Object
             $policyContent += "{0} = {1}" -f $entry.Key, ($assignments -join ',')
         }
@@ -583,6 +597,7 @@ begin {
                     if ($PSCmdlet.ShouldProcess("$($identity)", "Grant $privilege")) {
                         if ($assignmentSet.Add($principal)) {
                             $script:privilegeAssignmentsDirty = $true
+                            [void]$script:modifiedPrivileges.Add($privilege)
                         }
                     }
                 }
@@ -590,6 +605,7 @@ begin {
                     if ($PSCmdlet.ShouldProcess("$($identity)", "Revoke $privilege")) {
                         if ($assignmentSet.Remove($principal)) {
                             $script:privilegeAssignmentsDirty = $true
+                            [void]$script:modifiedPrivileges.Add($privilege)
                         }
                     }
                 }
