@@ -36,8 +36,8 @@ param (
 
     [Parameter(Mandatory = $false, ParameterSetName = 'Default')]
     [ValidateNotNullOrEmpty()]
-    [ValidateSet( 1, 2, 3)]
-    [string] $level = 1,
+    [ValidateSet('1', '2', '3')]
+    [string] $level = '1',
 
     [Parameter(Mandatory = $false, ParameterSetName = 'Default')]
     [string[]] $excludeControls = @(),
@@ -944,7 +944,7 @@ process {
         }
 
         # import controls based on environment
-        $controls = Import-Csv -Path $controlsCSV | Where-Object { ($_.ENABLED -eq "ENABLED") -and ($_.$($environment) -eq "ENABLED") -and ($_.$($os) -eq "ENABLED") -and ([int]$_.Level -le $level) -and ($_.ControlID -notin $excludeControls) }
+        $controls = Import-Csv -Path $controlsCSV | Where-Object { ($_.ENABLED -eq "ENABLED") -and ($_.$($environment) -eq "ENABLED") -and ($_.$($os) -eq "ENABLED") -and ([int]$_.Level -le [int]$level) -and ($_.ControlID -notin $excludeControls) }
 
         # Registry section
         foreach ($control in ($controls | Where-Object { ($_.Type -eq "Registry") })) {
