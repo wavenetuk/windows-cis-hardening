@@ -1,3 +1,9 @@
+## v0.11.1 (2026-07-07)
+
+### Fix
+
+- update level parameter type to string in cis-hardening script (#27)
+
 ## v0.11.0 (2026-07-06)
 
 ### Feat
