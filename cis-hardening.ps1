@@ -526,10 +526,19 @@ begin {
             }
 
             try {
-                if ($PSCmdlet.ShouldProcess("$($netAccountsType)", "Set: $netAccountsValue")) {
-                    net accounts /$($netAccountsType):$netAccountsValue
+                # net accounts DISPLAYS certain zero/unlimited states as words (e.g. uniquepw=None,
+                # lockout=Never, maxpwage=Unlimited). Those words are captured verbatim into OldValue,
+                # but net accounts /<option>: only accepts numbers/UNLIMITED, so translate on the way back.
+                $normalisedValue = switch ($netAccountsValue) {
+                    'None'      { '0' }
+                    'Never'     { '0' }
+                    'Unlimited' { 'UNLIMITED' }
+                    default     { $netAccountsValue }
                 }
-                $obj.NewValue = $netAccountsValue
+                if ($PSCmdlet.ShouldProcess("$($netAccountsType)", "Set: $normalisedValue")) {
+                    net accounts /$($netAccountsType):$normalisedValue
+                }
+                $obj.NewValue = $normalisedValue
             }
             catch {
                 $obj.NewValue = $_.Exception.Message
