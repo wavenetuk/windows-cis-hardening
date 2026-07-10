@@ -1,3 +1,9 @@
+## v0.12.0 (2026-07-10)
+
+### Feat
+
+- add Remote Desktop Users to network logon rights in controls.csv for Windows 11 compliance (#29)
+
 ## v0.11.1 (2026-07-07)
 
 ### Fix
