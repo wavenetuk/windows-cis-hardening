@@ -1,3 +1,9 @@
+## v0.12.1 (2026-07-14)
+
+### Fix
+
+- update audit setting 'Logoff' to include SuccessAndFailure in controls.csv (#30)
+
 ## v0.12.0 (2026-07-10)
 
 ### Feat
