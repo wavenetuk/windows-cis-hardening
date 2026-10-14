@@ -865,6 +865,10 @@ begin {
     elseif ((Get-CimInstance win32_computersystem | Select-Object Model).Model -eq "Virtual Machine") {
         $environment = "Hyper-V"
     }
+    # HPE VM Essentials
+    elseif ((Get-CimInstance win32_computersystem | Select-Object Manufacturer).Manufacturer -like "Morpheus*") {
+        $environment = "VME"
+    }
 
     Write-Log -Object "Hardening" -Message "Environment: $environment" -Severity Information -logType Host
 

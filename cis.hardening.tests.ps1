@@ -52,7 +52,7 @@ begin {
 
     [array]$global:results = @()
 
-    # Determine the environment: Azure, VMware or Hyper-V
+    # Determine the environment: Azure, VMware, Hyper-V or VME
     try {
         $apiCall = Invoke-RestMethod -Headers @{"Metadata" = "true" } -Method GET -Proxy $Null -Uri "http://169.254.169.254/metadata/versions"
         $apiVersion = $apiCall.apiVersions | Sort-Object -Descending | Select-Object -First 1
@@ -73,6 +73,7 @@ begin {
         { $BUA.IPAddress -like "10.221*" -or $BUA.IPAddress -like "10.251*" } { $script:Platform = "Flex" }
         { $_ -like "*VMware*" -and $null -eq $BUA } { $script:Platform = "VMware" }
         { $_ -like "*Virtual Machine*" -and $null -eq $BUA } { $script:Platform = "Hyper-V" }
+        { $_ -like "*Morpheus*" -and $null -eq $BUA } { $script:Platform = "VME" }
         { $instance.compute.azEnvironment -like "Azure*" } { $script:Platform = "Azure" }
         Default { $script:Platform = "Physical" }
     }
