@@ -1,3 +1,9 @@
+## v0.13.0 (2026-10-14)
+
+### Feat
+
+- add VME (HPE VM Essentials) environment support (#31)
+
 ## v0.12.1 (2026-07-14)
 
 ### Fix
