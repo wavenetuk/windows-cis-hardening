@@ -823,13 +823,24 @@ begin {
     $saveVerbosePreference = $VerbosePreference
     $VerbosePreference = 'continue'
 
-    if ($controlsCSV -match '^(http|https)://') {
+    # Only a downloaded controls CSV is removed at the end; a local file passed in is left in place.
+    $controlsDownloaded = $false
+
+    # Rollback only needs the rollback CSV, so the controls CSV is only downloaded for a hardening run.
+    if ((-not $rollBackBool) -and ($controlsCSV -match '^(http|https)://')) {
         try {
             $fileName = 'controls.csv'
-            $downloadPath = Join-Path -Path $env:SYSTEMROOT\temp -ChildPath $fileName
+            # Download next to the script. $PSScriptRoot is empty when run from memory (Nerdio / one-line command),
+            # and an existing controls.csv next to the script must not be overwritten, so fall back to the Windows temp folder.
+            $downloadDirectory = $PSScriptRoot
+            if ([string]::IsNullOrEmpty($downloadDirectory) -or (Test-Path (Join-Path -Path $downloadDirectory -ChildPath $fileName))) {
+                $downloadDirectory = "$env:SYSTEMROOT\temp"
+            }
+            $downloadPath = Join-Path -Path $downloadDirectory -ChildPath $fileName
             Invoke-WebRequest -Uri $controlsCSV -OutFile $downloadPath -UseBasicParsing -TimeoutSec 60
             if (Test-Path $downloadPath -PathType 'Leaf') {
                 $controlsCSV = $downloadPath
+                $controlsDownloaded = $true
             }
             else {
                 throw "Failed to download the file from URL: $controlsCSV"
@@ -845,6 +856,8 @@ begin {
     $global:logPath = Join-Path -Path $env:SYSTEMROOT\temp -ChildPath "cis-hardening-level-$($level)_log"
 
     # Determine environment
+    # Initialise first, as a caller's $environment can leak in when the script is run from memory.
+    $environment = $null
     try {
         $apiCall = Invoke-RestMethod -Headers @{"Metadata" = "true" } -Method GET -Proxy $Null -TimeoutSec 5 -Uri "http://169.254.169.254/metadata/versions"
         $apiVersion = $apiCall.apiVersions | Sort-Object -Descending | Select-Object -First 1
@@ -885,6 +898,29 @@ begin {
     }
 
     Write-Log -Object "Hardening" -Message "Operating System: $os" -Severity Information -logType Host
+
+    # Stop before making any changes if the platform or OS has no column in the controls CSV,
+    # otherwise no controls match and the run looks successful while applying nothing.
+    # Rollback doesn't use either value, so it isn't blocked.
+    if (-not $rollBackBool) {
+        $csvColumns = @((Import-Csv -Path $controlsCSV | Select-Object -First 1).PSObject.Properties.Name)
+        $unsupported = @()
+
+        if ([string]::IsNullOrEmpty($environment) -or ($environment -notin $csvColumns)) {
+            $computerSystem = Get-CimInstance -ClassName Win32_ComputerSystem
+            $unsupported += "unsupported platform (Manufacturer: $($computerSystem.Manufacturer), Model: $($computerSystem.Model))"
+        }
+        if ([string]::IsNullOrEmpty($os) -or ($os -notin $csvColumns)) {
+            $unsupported += "unsupported operating system ($osName)"
+        }
+
+        if ($unsupported.Count -gt 0) {
+            if ($controlsDownloaded) {
+                Remove-Item -Path $controlsCSV -Force -ErrorAction SilentlyContinue
+            }
+            throw "CIS hardening stopped, no changes made: $($unsupported -join '; ')"
+        }
+    }
 }
 
 process {
@@ -915,14 +951,17 @@ process {
                 Rename-Account -controlID $item.controlID -account $item.NewValue -newName $item.OldValue
             }
             if ($item.type -eq 'AccountStatus') {
-                if ($control.ControlID -eq '8364') {
+                if ($item.ControlID -eq '8364') {
                     $user = Get-LocalUser | Where-Object { $_.SID -like 'S-1-5-*-501' }
-                    Set-AccountStatus -controlID $control.ControlID -account $user.Name -status $item.OldValue
+                    Set-AccountStatus -controlID $item.ControlID -account $user.Name -status $item.OldValue
                 }
             }
         }
         Save-PrivilegeAssignments
-        $global:results | Export-Csv -Path (Join-Path (split-path -parent $MyInvocation.MyCommand.Definition) "cis-hardening-rollback-output.csv") -Force -NoTypeInformation
+
+        # Save the rollback report next to the script, or in the Windows temp folder when run from memory ($PSScriptRoot is empty).
+        $rollBackOutputDirectory = if ([string]::IsNullOrEmpty($PSScriptRoot)) { "$env:SYSTEMROOT\temp" } else { $PSScriptRoot }
+        $global:results | Export-Csv -Path (Join-Path -Path $rollBackOutputDirectory -ChildPath "cis-hardening-rollback-output.csv") -Force -NoTypeInformation -WhatIf:$false
     }
     # deploy settings
     else {
@@ -1041,11 +1080,14 @@ process {
 
 end {
     # Remove controls CSV
-    Remove-item -Path $controlsCSV -Force
+    if ($controlsDownloaded) {
+        Remove-item -Path $controlsCSV -Force
+    }
 
     # Output file
     Write-Host "Please reboot the server to ensure that all settings are correctly applied following completion of this script" -ForegroundColor Green
-    if ($outputBool) {
+    # Rollback writes its own report, so don't overwrite the hardening output (which may be the rollback CSV just used).
+    if ($outputBool -and (-not $rollBackBool)) {
         $WhatIfPreference = $false
         $global:results | Export-Csv -Path (Join-Path -Path $env:SYSTEMROOT\temp -ChildPath "cis-hardening-level-$level-output.csv") -Force -NoTypeInformation
     }
