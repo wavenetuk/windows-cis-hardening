@@ -1,3 +1,9 @@
+## v0.13.1 (2026-10-15)
+
+### Fix
+
+- stop on unsupported platform/OS and harden CSV handling for rollback and in-memory runs (#32)
+
 ## v0.13.0 (2026-10-14)
 
 ### Feat
